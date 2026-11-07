@@ -10,7 +10,9 @@ Tras cambios en `admin-panel.html` o el sitio Vercel:
 
 ## Vercel Production
 
-El proyecto **nuevahabitat** en Vercel despliega desde la rama **`main`** del repositorio conectado (no el `master` antiguo de Firebase).
+El proyecto **nuevahabitat** en Vercel despliega desde la rama **`main`** del repositorio que tenga enlazado en Vercel (hoy suele ser un `main` distinto al mirror `danielhdz2-ai/nueva-habitat` en GitHub hasta que se unifiquen).
+
+Para que los commits del agente lleguen a Production, el proyecto Vercel debe usar **este** repositorio y la rama `main`, con el árbol completo del sitio (landings, `api/`, `scripts/`, etc.), no solo el mirror antiguo de Firebase.
 
 ### Automático vía GitHub Actions
 
