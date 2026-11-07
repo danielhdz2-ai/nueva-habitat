@@ -125,6 +125,12 @@ select.adm-control{
 .stat-num{font-size:1.45rem;font-weight:700;color:var(--gold);line-height:1.15}
 .stat-label{font-size:.7rem;color:var(--muted);margin-top:.3rem;letter-spacing:.02em}
 .stat-hint{font-size:.65rem;color:var(--muted);margin-top:.2rem;opacity:.85}
+.lead-month-stats{margin-bottom:1rem;padding:1rem 1.1rem;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius)}
+.lead-month-stats .adm-stats{margin-bottom:.65rem}
+.lead-fuente-bar{display:flex;height:10px;border-radius:5px;overflow:hidden;margin:.55rem 0 .35rem;background:var(--border);max-width:420px}
+.lead-fuente-bar span{min-width:2px}
+.lead-stats-legend{font-size:.72rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:.65rem 1rem;line-height:1.45}
+.lead-stats-legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:.35rem;vertical-align:middle}
 
 /* ─── Dashboard panels ───────────────────────────────────────── */
 .hoy-toca-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}
@@ -879,6 +885,23 @@ select.adm-control{
               </div>
             </div>
           </div>
+          <div id="lead-month-stats" class="lead-month-stats">
+            <div class="gap-row" style="justify-content:space-between;align-items:flex-start;flex-wrap:wrap;margin-bottom:.75rem">
+              <div>
+                <div class="wiz-section-label" style="margin:0">Estadísticas y control mensual</div>
+                <p class="text-muted" style="font-size:.78rem;margin:.35rem 0 0">Entradas por formulario web vs altas manuales en panel · zona horaria Madrid</p>
+              </div>
+              <div class="gap-row" style="flex-wrap:wrap;align-items:center">
+                <label class="text-muted" style="font-size:.72rem" for="lead-filter-month">Mes</label>
+                <input type="month" id="lead-filter-month" class="adm-control" style="max-width:168px"/>
+                <button type="button" class="adm-btn adm-btn-ghost adm-btn-sm" onclick="setLeadMonthFilter('')">Todos</button>
+                <button type="button" class="adm-btn adm-btn-ghost adm-btn-sm" onclick="setLeadMonthFilter(currentLeadMonthYm())">Mes actual</button>
+                <label class="adm-field-check" style="font-size:.72rem;white-space:nowrap"><input type="checkbox" id="lead-month-filter-list" checked/> Aplicar al listado</label>
+              </div>
+            </div>
+            <div id="leads-month-stats-grid"></div>
+            <div id="leads-month-stats-foot" class="text-muted" style="font-size:.72rem;margin-top:.35rem"></div>
+          </div>
           <div id="lead-form-wrap" style="display:none;margin-bottom:1rem" class="adm-card">
             <div class="adm-card-head">
               <h3>Nuevo lead manual</h3>
@@ -926,8 +949,9 @@ select.adm-control{
             <button class="adm-subtab" data-lf="segment" data-val="otros">Otros</button>
           </div>
           <div class="adm-subtabs" style="margin-bottom:.65rem;flex-wrap:wrap">
-            <button class="adm-subtab active" data-lf="canal" data-val="">Formulario y panel</button>
+            <button class="adm-subtab active" data-lf="canal" data-val="">Todos los canales</button>
             <button class="adm-subtab" data-lf="canal" data-val="formulario">Solo formulario web</button>
+            <button class="adm-subtab" data-lf="canal" data-val="manual_panel">Solo manual panel</button>
             <button class="adm-subtab" data-lf="canal" data-val="registro_panel">Solo registro panel</button>
           </div>
           <div id="lead-alarm-banner" class="adm-alarm-banner" style="display:none;margin-bottom:.75rem">
@@ -5202,6 +5226,71 @@ let _leadFilterTipo = '';
 let _leadFilterSegment = '';
 let _leadFilterCanal = '';
 let _leadFilterAlarm = false;
+/** YYYY-MM (Madrid) o '' = todos los meses en el listado */
+let _leadFilterMonth = '';
+let _leadMonthAppliesToList = true;
+
+function currentLeadMonthYm() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit' }).format(new Date());
+}
+
+function leadMonthYm(l) {
+  if (!l?.created_at) return '';
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Madrid', year: 'numeric', month: '2-digit' }).format(new Date(l.created_at));
+  } catch (_) {
+    return '';
+  }
+}
+
+function leadMonthLabel(ym) {
+  if (!ym) return 'Todos los meses';
+  const [y, m] = ym.split('-').map(Number);
+  if (!y || !m) return ym;
+  const d = new Date(Date.UTC(y, m - 1, 1));
+  return d.toLocaleDateString('es-ES', { month: 'long', year: 'numeric', timeZone: 'Europe/Madrid' });
+}
+
+function shiftLeadMonthYm(ym, delta) {
+  if (!ym) return '';
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  const ny = d.getUTCFullYear();
+  const nm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  return `${ny}-${nm}`;
+}
+
+/** manual · formulario_web · registro_panel */
+function leadFuenteIngreso(l) {
+  if (isManualAdminLead(l)) return 'manual';
+  if (leadEsRegistroPanel(l)) return 'registro_panel';
+  return 'formulario_web';
+}
+
+function setLeadMonthFilter(ym) {
+  _leadFilterMonth = ym || '';
+  const input = document.getElementById('lead-filter-month');
+  if (input) input.value = _leadFilterMonth;
+  renderLeadsView();
+}
+window.setLeadMonthFilter = setLeadMonthFilter;
+
+function initLeadMonthControls() {
+  const input = document.getElementById('lead-filter-month');
+  const chk = document.getElementById('lead-month-filter-list');
+  if (!input) return;
+  if (!_leadFilterMonth) _leadFilterMonth = currentLeadMonthYm();
+  input.value = _leadFilterMonth;
+  input.addEventListener('change', () => {
+    _leadFilterMonth = input.value || '';
+    renderLeadsView();
+  });
+  chk?.addEventListener('change', () => {
+    _leadMonthAppliesToList = !!chk.checked;
+    renderLeadsView();
+  });
+  _leadMonthAppliesToList = chk ? chk.checked : true;
+}
 
 function findLeadById(id) {
   return _leadsData.find(x => x.id === id) || _dashCache.leads.find(x => x.id === id);
@@ -6385,6 +6474,7 @@ function updateLeadEstadoTabsVisibility() {
 function filterLeadsList() {
   return _leadsData.filter(l => {
     if (!isAdminLeadsListRow(l)) return false;
+    if (_leadMonthAppliesToList && _leadFilterMonth && leadMonthYm(l) !== _leadFilterMonth) return false;
     if (_leadFilterAlarm && !leadNeedsAlarm(l)) return false;
     if (!_leadFilterEstado && !_leadFilterAlarm && l.estado === 'descartado') return false;
     if (!_leadFilterEstado && !_leadFilterAlarm && isLeadOcultoEnLeadsGeneral(l)) return false;
@@ -6395,26 +6485,113 @@ function filterLeadsList() {
     } else if (_leadFilterEstado && l.estado !== _leadFilterEstado) return false;
     if (_leadFilterTipo && l.tipo !== _leadFilterTipo) return false;
     if (_leadFilterSegment && leadSegment(l) !== _leadFilterSegment) return false;
-    if (_leadFilterCanal === 'registro_panel' && !leadEsRegistroPanel(l)) return false;
-    if (_leadFilterCanal === 'formulario' && leadEsRegistroPanel(l)) return false;
+    if (_leadFilterCanal === 'registro_panel' && leadFuenteIngreso(l) !== 'registro_panel') return false;
+    if (_leadFilterCanal === 'formulario' && leadFuenteIngreso(l) !== 'formulario_web') return false;
+    if (_leadFilterCanal === 'manual_panel' && leadFuenteIngreso(l) !== 'manual') return false;
     return true;
   });
 }
 
+function leadsRowsForStatsMonth() {
+  if (!_leadFilterMonth) {
+    return _leadsData.filter(isAdminLeadsListRow);
+  }
+  return _leadsData.filter((l) => isAdminLeadsListRow(l) && leadMonthYm(l) === _leadFilterMonth);
+}
+
+function renderLeadsMonthlyStats() {
+  const grid = document.getElementById('leads-month-stats-grid');
+  const foot = document.getElementById('leads-month-stats-foot');
+  if (!grid) return;
+  const ym = _leadFilterMonth;
+  const rows = leadsRowsForStatsMonth();
+  const prevYm = ym ? shiftLeadMonthYm(ym, -1) : '';
+  const prevRows = prevYm
+    ? _leadsData.filter((l) => isAdminLeadsListRow(l) && leadMonthYm(l) === prevYm)
+    : [];
+  const total = rows.length;
+  const web = rows.filter((l) => leadFuenteIngreso(l) === 'formulario_web').length;
+  const manual = rows.filter((l) => leadFuenteIngreso(l) === 'manual').length;
+  const registro = rows.filter((l) => leadFuenteIngreso(l) === 'registro_panel').length;
+  const nuevos = rows.filter((l) => (l.estado || 'nuevo') === 'nuevo').length;
+  const contactados = rows.filter((l) => l.estado === 'contactado').length;
+  const cerrados = rows.filter((l) => l.estado === 'cerrado').length;
+  const descartados = rows.filter((l) => l.estado === 'descartado').length;
+  const v = rows.filter((l) => leadSegment(l) === 'vendedor').length;
+  const c = rows.filter((l) => leadSegment(l) === 'comprador').length;
+  const aqA = rows.filter((l) => leadSegment(l) === 'alquiler_admin').length;
+  const aqI = rows.filter((l) => leadSegment(l) === 'alquiler_integral').length;
+  const pct = (n) => (total ? Math.round((n / total) * 100) : 0);
+  const webW = total ? Math.max(2, Math.round((web / total) * 100)) : 0;
+  const manW = total ? Math.max(manual ? 2 : 0, Math.round((manual / total) * 100)) : 0;
+  const regW = total ? Math.max(registro ? 2 : 0, 100 - webW - manW) : 0;
+  const delta = ym && prevRows.length ? total - prevRows.length : null;
+  const deltaTxt = delta != null
+    ? `${delta >= 0 ? '+' : ''}${delta} vs ${leadMonthLabel(prevYm)} (${prevRows.length})`
+    : ym
+      ? 'Sin datos del mes anterior en esta carga'
+      : 'Selecciona un mes concreto para comparar con el anterior';
+
+  const title = ym ? leadMonthLabel(ym) : 'Histórico (todos los meses en carga)';
+  grid.innerHTML = `
+    <p style="font-size:.8rem;margin:0 0 .65rem;color:var(--text)"><strong>${dashEsc(title)}</strong></p>
+    <div class="adm-stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:.5rem">
+      <div class="stat-card"><div class="stat-num">${total}</div><div class="stat-label">Total leads</div><div class="stat-hint">${dashEsc(deltaTxt)}</div></div>
+      <div class="stat-card"><div class="stat-num">${web}</div><div class="stat-label">Formulario web</div><div class="stat-hint">${pct(web)}% del mes</div></div>
+      <div class="stat-card"><div class="stat-num">${manual}</div><div class="stat-label">Manual panel</div><div class="stat-hint">${pct(manual)}% del mes</div></div>
+      <div class="stat-card"><div class="stat-num">${registro}</div><div class="stat-label">Registro panel</div><div class="stat-hint">${pct(registro)}% del mes</div></div>
+    </div>
+    ${total ? `<div class="lead-fuente-bar" title="Distribución por canal">
+      <span style="width:${webW}%;background:var(--blue)"></span>
+      <span style="width:${manW}%;background:var(--gold)"></span>
+      <span style="width:${regW}%;background:var(--green)"></span>
+    </div>
+    <div class="lead-stats-legend">
+      <span><i style="background:var(--blue)"></i>Web ${web}</span>
+      <span><i style="background:var(--gold)"></i>Manual ${manual}</span>
+      <span><i style="background:var(--green)"></i>Registro ${registro}</span>
+    </div>` : '<p class="text-muted" style="font-size:.78rem;margin:.35rem 0 0">Sin leads en este mes con los datos cargados.</p>'}
+    <div class="adm-stats" style="grid-template-columns:repeat(4,1fr);margin-top:.85rem">
+      <div class="stat-card"><div class="stat-num" style="font-size:1.15rem">${nuevos}</div><div class="stat-label">Nuevos</div></div>
+      <div class="stat-card"><div class="stat-num" style="font-size:1.15rem">${contactados}</div><div class="stat-label">Contactados</div></div>
+      <div class="stat-card"><div class="stat-num" style="font-size:1.15rem">${cerrados}</div><div class="stat-label">Cerrados</div></div>
+      <div class="stat-card"><div class="stat-num" style="font-size:1.15rem">${descartados}</div><div class="stat-label">Descartados</div></div>
+    </div>
+    <p class="text-muted" style="font-size:.72rem;margin:.65rem 0 0;line-height:1.45">
+      Por línea: ${v} vendedor · ${c} comprador · ${aqA} alq. administración · ${aqI} alq. integral
+    </p>`;
+
+  if (foot) {
+    const listNote = _leadMonthAppliesToList && _leadFilterMonth
+      ? `Listado filtrado a ${leadMonthLabel(_leadFilterMonth)}.`
+      : _leadMonthAppliesToList && !_leadFilterMonth
+        ? 'Listado sin filtro de mes (todos).'
+        : `Listado sin filtro de mes (estadísticas de ${leadMonthLabel(ym)}).`;
+    foot.textContent = `${listNote} Carga actual: ${_leadsData.length} registros en memoria (API hasta 300 leads).`;
+  }
+}
+
 function renderLeadsCounts() {
   const el = document.getElementById('leads-counts');
-  const rows = _leadsData.filter(isAdminLeadsListRow);
-  if (!el || !rows.length) { if (el) el.textContent = rows.length ? '' : 'Sin leads aún'; return; }
+  const rows = filterLeadsList();
+  if (!el) return;
+  if (!rows.length) {
+    el.textContent = _leadsData.some(isAdminLeadsListRow) ? '0 con filtros actuales' : 'Sin leads aún';
+    return;
+  }
   const v = rows.filter(l => leadSegment(l) === 'vendedor').length;
   const c = rows.filter(l => leadSegment(l) === 'comprador').length;
   const aqA = rows.filter(l => leadSegment(l) === 'alquiler_admin').length;
   const aqI = rows.filter(l => leadSegment(l) === 'alquiler_integral').length;
-  const fp = rows.filter(l => isFormularioWebLead(l)).length;
-  el.innerHTML = `${rows.length} total · ${v} vendedor · ${c} comprador · ${aqA} alq. admin · ${aqI} alq. integral<br/>${fp} formulario web`;
+  const web = rows.filter(l => leadFuenteIngreso(l) === 'formulario_web').length;
+  const manual = rows.filter(l => leadFuenteIngreso(l) === 'manual').length;
+  const monthLbl = _leadMonthAppliesToList && _leadFilterMonth ? ` · ${leadMonthLabel(_leadFilterMonth)}` : '';
+  el.innerHTML = `${rows.length} en listado${monthLbl} · ${v} vendedor · ${c} comprador · ${aqA} alq. admin · ${aqI} alq. integral<br/>${web} web · ${manual} manual`;
 }
 
 function renderLeadsView() {
   updateLeadEstadoTabsVisibility();
+  renderLeadsMonthlyStats();
   const list = filterLeadsList();
   const tbl = document.getElementById('leads-table');
   if (!tbl) return;
@@ -6428,7 +6605,7 @@ async function loadLeads(){
     if (!_alqPropData.length) {
       try { await fetchAlquilerPropietarios(); } catch (_) { /* gestionados / seguimientos alquiler */ }
     }
-    const payload = await fetchAdminLeads({ purge: false, limit: 300 });
+    const payload = await fetchAdminLeads({ purge: false, limit: 500 });
     _leadsData = payload.data || [];
   } catch (err) {
     console.error('loadLeads', err);
@@ -6590,6 +6767,7 @@ function openAlqFromLead(leadId) {
 window.openAlqFromLead = openAlqFromLead;
 
 document.addEventListener('DOMContentLoaded', () => {
+  initLeadMonthControls();
   document.querySelectorAll('[data-lf="estado"]').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('[data-lf="estado"]').forEach(b => b.classList.remove('active'));
