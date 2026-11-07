@@ -22,12 +22,13 @@ Configurar **una vez** en GitHub → Settings → Secrets → Actions:
 
 Cada push a `main` dispara el hook.
 
-### Desde el agente (VM)
+### Desde el agente (VM) — CLI
 
-Si existe la variable `NH_VERCEL_DEPLOY_HOOK` en los secretos del entorno Cursor, ejecutar:
+Secretos en Cursor (formulario seguro, no en el chat): `NH_VERCEL_TOKEN` (obligatorio), opcional `NH_VERCEL_ORG_ID`, `NH_VERCEL_PROJECT_ID`, `NH_VERCEL_DEPLOY_HOOK`.
 
 ```bash
-bash scripts/trigger-vercel-production.sh
+bash scripts/vercel-deploy-production.sh   # vercel deploy --prod
+bash scripts/trigger-vercel-production.sh  # solo hook
 ```
 
-Tras cada push a `main`.
+`vercel login` por OAuth no se completa solo en el agente (falta autorizar GitHub en el navegador).
