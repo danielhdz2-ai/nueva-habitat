@@ -131,6 +131,13 @@ select.adm-control{
 .lead-fuente-bar span{min-width:2px}
 .lead-stats-legend{font-size:.72rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:.65rem 1rem;line-height:1.45}
 .lead-stats-legend i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:.35rem;vertical-align:middle}
+.lead-6m-chart{margin-top:1.1rem;padding-top:.85rem;border-top:1px solid var(--border)}
+.lead-6m-bars{display:flex;align-items:flex-end;gap:.35rem;height:148px;margin-top:.5rem}
+.lead-6m-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:.3rem;min-width:0}
+.lead-6m-stack{width:100%;max-width:56px;display:flex;flex-direction:column-reverse;border-radius:4px 4px 0 0;overflow:hidden;background:var(--border)}
+.lead-6m-stack span{display:block;width:100%;min-height:2px}
+.lead-6m-lbl{font-size:.62rem;color:var(--muted);text-align:center;line-height:1.2;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.lead-6m-num{font-size:.68rem;color:var(--gold);font-weight:600}
 
 /* ─── Dashboard panels ───────────────────────────────────────── */
 .hoy-toca-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}
@@ -897,6 +904,7 @@ select.adm-control{
                 <button type="button" class="adm-btn adm-btn-ghost adm-btn-sm" onclick="setLeadMonthFilter('')">Todos</button>
                 <button type="button" class="adm-btn adm-btn-ghost adm-btn-sm" onclick="setLeadMonthFilter(currentLeadMonthYm())">Mes actual</button>
                 <label class="adm-field-check" style="font-size:.72rem;white-space:nowrap"><input type="checkbox" id="lead-month-filter-list" checked/> Aplicar al listado</label>
+                <button type="button" class="adm-btn adm-btn-gold adm-btn-sm" onclick="exportLeadsMonthlyCsv()">Exportar CSV</button>
               </div>
             </div>
             <div id="leads-month-stats-grid"></div>
@@ -5292,6 +5300,147 @@ function initLeadMonthControls() {
   _leadMonthAppliesToList = chk ? chk.checked : true;
 }
 
+function leadMonthsSeries(count, endYm) {
+  const end = endYm || currentLeadMonthYm();
+  const out = [];
+  for (let i = count - 1; i >= 0; i -= 1) {
+    out.push(shiftLeadMonthYm(end, -i));
+  }
+  return out;
+}
+
+function leadRowsInMonth(ym) {
+  return _leadsData.filter((l) => isAdminLeadsListRow(l) && leadMonthYm(l) === ym);
+}
+
+function leadAggregateMonthStats(ym) {
+  const rows = leadRowsInMonth(ym);
+  return {
+    ym,
+    label: leadMonthLabel(ym),
+    total: rows.length,
+    web: rows.filter((l) => leadFuenteIngreso(l) === 'formulario_web').length,
+    manual: rows.filter((l) => leadFuenteIngreso(l) === 'manual').length,
+    registro: rows.filter((l) => leadFuenteIngreso(l) === 'registro_panel').length,
+    nuevos: rows.filter((l) => (l.estado || 'nuevo') === 'nuevo').length,
+    contactados: rows.filter((l) => l.estado === 'contactado').length,
+    cerrados: rows.filter((l) => l.estado === 'cerrado').length,
+    descartados: rows.filter((l) => l.estado === 'descartado').length,
+    vendedor: rows.filter((l) => leadSegment(l) === 'vendedor').length,
+    comprador: rows.filter((l) => leadSegment(l) === 'comprador').length,
+    alq_admin: rows.filter((l) => leadSegment(l) === 'alquiler_admin').length,
+    alq_integral: rows.filter((l) => leadSegment(l) === 'alquiler_integral').length,
+  };
+}
+
+function leadFuenteLabel(kind) {
+  if (kind === 'manual') return 'Manual panel';
+  if (kind === 'registro_panel') return 'Registro panel';
+  return 'Formulario web';
+}
+
+function csvEscapeCell(v) {
+  const s = String(v ?? '');
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+function downloadCsvFile(filename, rows) {
+  const body = rows.map((r) => r.map(csvEscapeCell).join(';')).join('\r\n');
+  const blob = new Blob(['\ufeff' + body], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+function exportLeadsMonthlyCsv() {
+  const focusYm = _leadFilterMonth || currentLeadMonthYm();
+  const focus = leadAggregateMonthStats(focusYm);
+  const series = leadMonthsSeries(6, focusYm).map(leadAggregateMonthStats);
+  const detailRows = (_leadFilterMonth ? leadRowsInMonth(_leadFilterMonth) : leadsRowsForStatsMonth())
+    .slice()
+    .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  const lines = [];
+  lines.push(['NuevaHabitat — exportación leads', new Date().toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })]);
+  lines.push([]);
+  lines.push(['RESUMEN MES', focus.label, focus.ym]);
+  lines.push(['Métrica', 'Valor']);
+  lines.push(['Total', focus.total]);
+  lines.push(['Formulario web', focus.web]);
+  lines.push(['Manual panel', focus.manual]);
+  lines.push(['Registro panel', focus.registro]);
+  lines.push(['Nuevos', focus.nuevos]);
+  lines.push(['Contactados', focus.contactados]);
+  lines.push(['Cerrados', focus.cerrados]);
+  lines.push(['Descartados', focus.descartados]);
+  lines.push(['Vendedor', focus.vendedor]);
+  lines.push(['Comprador', focus.comprador]);
+  lines.push(['Alq. administración', focus.alq_admin]);
+  lines.push(['Alq. integral', focus.alq_integral]);
+  lines.push([]);
+  lines.push(['EVOLUCIÓN ÚLTIMOS 6 MESES']);
+  lines.push(['Mes', 'Año-mes', 'Total', 'Web', 'Manual', 'Registro', 'Nuevos', 'Contactados', 'Cerrados', 'Descartados']);
+  series.forEach((s) => {
+    lines.push([s.label, s.ym, s.total, s.web, s.manual, s.registro, s.nuevos, s.contactados, s.cerrados, s.descartados]);
+  });
+  lines.push([]);
+  lines.push(['DETALLE LEADS', _leadFilterMonth ? focus.label : 'Histórico (filtro actual de estadísticas)']);
+  lines.push(['Fecha', 'Nombre', 'Teléfono', 'Email', 'Canal', 'Estado', 'Tipo', 'Origen', 'Línea']);
+  detailRows.forEach((l) => {
+    lines.push([
+      l.created_at ? new Date(l.created_at).toLocaleString('es-ES', { timeZone: 'Europe/Madrid' }) : '',
+      l.nombre || '',
+      l.telefono || '',
+      l.email || '',
+      leadFuenteLabel(leadFuenteIngreso(l)),
+      l.estado || 'nuevo',
+      l.tipo || '',
+      l.origen || '',
+      leadSegment(l),
+    ]);
+  });
+  const safeYm = (focus.ym || 'historico').replace(/[^\d-]/g, '');
+  downloadCsvFile(`nh-leads-${safeYm}.csv`, lines);
+  nhToast('CSV descargado.', 'success', 3500);
+}
+window.exportLeadsMonthlyCsv = exportLeadsMonthlyCsv;
+
+function renderLead6MonthChart(endYm) {
+  const series = leadMonthsSeries(6, endYm || currentLeadMonthYm()).map(leadAggregateMonthStats);
+  const maxTotal = Math.max(1, ...series.map((s) => s.total));
+  const barH = 120;
+  const cols = series.map((s) => {
+    const h = s.total ? Math.max(6, Math.round((s.total / maxTotal) * barH)) : 4;
+    const webH = s.total ? Math.round((s.web / s.total) * h) : 0;
+    const manH = s.total ? Math.round((s.manual / s.total) * h) : 0;
+    const regH = Math.max(0, h - webH - manH);
+    const shortLbl = s.ym ? s.ym.slice(5) + '/' + s.ym.slice(2, 4) : '';
+    return `<div class="lead-6m-col" title="${dashEsc(s.label)} · ${s.total} leads">
+      <div class="lead-6m-num">${s.total}</div>
+      <div class="lead-6m-stack" style="height:${h}px">
+        ${regH ? `<span style="height:${regH}px;background:var(--green)"></span>` : ''}
+        ${manH ? `<span style="height:${manH}px;background:var(--gold)"></span>` : ''}
+        ${webH ? `<span style="height:${webH}px;background:var(--blue)"></span>` : ''}
+      </div>
+      <div class="lead-6m-lbl">${dashEsc(shortLbl)}</div>
+    </div>`;
+  }).join('');
+  return `<div class="lead-6m-chart">
+    <div class="wiz-section-label" style="margin:0">Evolución últimos 6 meses</div>
+    <p class="text-muted" style="font-size:.72rem;margin:.3rem 0 0">Barras apiladas: web · manual · registro</p>
+    <div class="lead-6m-bars">${cols}</div>
+    <div class="lead-stats-legend" style="margin-top:.45rem">
+      <span><i style="background:var(--blue)"></i>Formulario web</span>
+      <span><i style="background:var(--gold)"></i>Manual panel</span>
+      <span><i style="background:var(--green)"></i>Registro panel</span>
+    </div>
+  </div>`;
+}
+
 function findLeadById(id) {
   return _leadsData.find(x => x.id === id) || _dashCache.leads.find(x => x.id === id);
 }
@@ -6559,15 +6708,16 @@ function renderLeadsMonthlyStats() {
     </div>
     <p class="text-muted" style="font-size:.72rem;margin:.65rem 0 0;line-height:1.45">
       Por línea: ${v} vendedor · ${c} comprador · ${aqA} alq. administración · ${aqI} alq. integral
-    </p>`;
+    </p>
+    ${renderLead6MonthChart(ym || currentLeadMonthYm())}`;
 
   if (foot) {
     const listNote = _leadMonthAppliesToList && _leadFilterMonth
       ? `Listado filtrado a ${leadMonthLabel(_leadFilterMonth)}.`
       : _leadMonthAppliesToList && !_leadFilterMonth
         ? 'Listado sin filtro de mes (todos).'
-        : `Listado sin filtro de mes (estadísticas de ${leadMonthLabel(ym)}).`;
-    foot.textContent = `${listNote} Carga actual: ${_leadsData.length} registros en memoria (API hasta 300 leads).`;
+        : `Listado sin filtro de mes (estadísticas de ${leadMonthLabel(ym || currentLeadMonthYm())}).`;
+    foot.textContent = `${listNote} Carga actual: ${_leadsData.length} registros en memoria (API hasta 500 leads). Exportar CSV incluye resumen, 6 meses y detalle.`;
   }
 }
 
