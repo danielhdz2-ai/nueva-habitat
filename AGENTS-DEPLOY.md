@@ -1,34 +1,37 @@
 # Despliegue NuevaHabitat (agentes Cloud)
 
-## GitHub (siempre)
+## Repositorio que importa para Vercel
 
-Tras cambios en `admin-panel.html` o el sitio Vercel:
+| Dónde | Repo | Rol |
+|-------|------|-----|
+| **Producción (Vercel)** | [nuevahabitat-ai/nuevahabitat](https://github.com/nuevahabitat-ai/nuevahabitat) rama `main` | Lo que ves en el dashboard (p. ej. commit `43c41d2` / `536a00b`) |
+| **Este agente (Cursor)** | `danielhdz2-ai/nueva-habitat` | Mirror parcial; **push aquí no actualiza www.nuevahabitat.com** |
 
-1. Commit en rama `cursor/...-067f`.
-2. `git push origin <rama>`.
-3. Fusionar en `master` y `main`: `git push origin master:main`.
+Los commits del agente **sí se hacen** en `danielhdz2-ai/nueva-habitat` (`main`/`master`). Vercel no los ve porque el proyecto **nuevahabitat** en Vercel está enlazado al otro GitHub.
 
-## Vercel Production
+### Para que sea automático como en tus otros proyectos
 
-El proyecto **nuevahabitat** en Vercel despliega desde la rama **`main`** del repositorio que tenga enlazado en Vercel (hoy suele ser un `main` distinto al mirror `danielhdz2-ai/nueva-habitat` en GitHub hasta que se unifiquen).
+Una de estas dos (recomendada la 1):
 
-Para que los commits del agente lleguen a Production, el proyecto Vercel debe usar **este** repositorio y la rama `main`, con el árbol completo del sitio (landings, `api/`, `scripts/`, etc.), no solo el mirror antiguo de Firebase.
+1. **En Cursor**: lanzar el Cloud Agent sobre el repo `nuevahabitat-ai/nuevahabitat` (no el mirror `danielhdz2-ai/nueva-habitat`).
+2. **En GitHub**: en `nuevahabitat-ai/nuevahabitat` → Settings → Collaborators, dar permiso **Write** a la app de Cursor / `cursor[bot]` (la misma que ya pushea en tus otros repos).
 
-### Automático vía GitHub Actions
+Tras eso, commit + push a `main` en ese repo = deploy Production en Vercel (como en tu captura).
 
-Configurar **una vez** en GitHub → Settings → Secrets → Actions:
+### Sincronizar solo el panel desde este workspace
 
-- `VERCEL_DEPLOY_HOOK`: URL del Deploy Hook (Vercel → Project → Settings → Git → Deploy Hooks → Production).
-
-Cada push a `main` dispara el hook.
-
-### Desde el agente (VM) — CLI
-
-Secretos en Cursor (formulario seguro, no en el chat): `NH_VERCEL_TOKEN` (obligatorio), opcional `NH_VERCEL_ORG_ID`, `NH_VERCEL_PROJECT_ID`, `NH_VERCEL_DEPLOY_HOOK`.
+Si el agente sigue en el mirror pero ya hay permiso de push al repo de producción:
 
 ```bash
-bash scripts/vercel-deploy-production.sh   # vercel deploy --prod
-bash scripts/trigger-vercel-production.sh  # solo hook
+bash scripts/push-to-vercel-github.sh
 ```
 
-`vercel login` por OAuth no se completa solo en el agente (falta autorizar GitHub en el navegador).
+## Git en el mirror (siempre)
+
+1. Commit en `cursor/...-067f`.
+2. `git push origin <rama>`.
+3. `git push origin master:main` (mantiene el mirror al día).
+
+## Hook Vercel (opcional)
+
+Si no usas Git directo: GitHub secret `VERCEL_DEPLOY_HOOK` en el repo que Vercel construye, workflow `.github/workflows/vercel-production.yml`.
